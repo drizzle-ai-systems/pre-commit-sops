@@ -1,0 +1,7 @@
+- id: sops-encryption
+  language: python
+  entry: python3 -m pre_commit_hook_ensure_sops
+  name: Ensure secrets are encrypted with sops
+  # Users should define the file patterns to check in their .pre-commit-config.yaml
+  # Example:
+  #   files: .*secret.*
