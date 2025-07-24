@@ -18,11 +18,12 @@ Add this to your `.pre-commit-config.yaml`:
 ```yaml
 repos:  
 - repo: https://github.com/DrizzleAI/pre-commit-sops
-  rev: v1.1
+  rev: v1.2
   hooks:
   - id: sops-encryption
     # Define the file patterns to check with the hook
     files: .*drizzle-ai.yaml*  # Example: change it to fit your file pattern to ensure sops encryption
+    pattern: secret # Optional, pattern in the checked file to include in the test
 ```
 
 You can customize the `files:` pattern to match the files you want checked for SOPS encryption.
