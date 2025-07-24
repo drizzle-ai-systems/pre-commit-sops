@@ -31,13 +31,20 @@ def validate_enc(item):
         return all(validate_enc(i) for i in item.values())
     else:
         return False
+    
 
-def check_file(filename):
+
+
+def check_file(filename, pattern=None):
     """
     Check if a file has been encrypted properly with sops.
 
     Returns a boolean indicating wether given file is valid or not, as well as
     a string with a human readable success / failure message.
+    
+    Args:
+        filename: Path to the file to check
+        pattern: Optional pattern to match keys that should be encrypted (e.g., "_secrets")
     """
     # All YAML is valid JSON *except* if it contains hard tabs, and the default go
     # JSON outputter uses hard tabs, and since sops is written in go it does the same.
@@ -65,15 +72,65 @@ def check_file(filename):
     invalid_keys = []
     for k in doc:
         if k != 'sops':
-            # Values under the `sops` key are not encrypted.
-            if not validate_enc(doc[k]):
+            # If pattern is specified, only check keys that match the pattern
+            should_check = pattern is None or k.endswith(pattern)
+            
+            if should_check and not validate_enc(doc[k]):
                 # Collect all invalid keys so we can provide useful error message
                 invalid_keys.append(k)
 
     if invalid_keys:
-        return False, f"{filename}: Unencrypted values found nested under keys: {','.join(invalid_keys)}"
+        pattern_msg = f" (keys matching pattern '{pattern}')" if pattern else ""
+        return False, f"{filename}: Unencrypted values found nested under keys{pattern_msg}: {','.join(invalid_keys)}"
 
     return True, f"{filename}: Valid encryption"
+
+
+    # if 'sops' not in doc:
+    # # sops puts a `sops` key in the encrypted output. If it is not
+    # # present, very likely the file is not encrypted.
+    #   return False, f"{filename}: sops metadata key not found in file, is not properly encrypted"
+
+
+
+# def check_file(filename):
+#     """
+#     Check if a file has been encrypted properly with sops.
+
+#     Returns a boolean indicating wether given file is valid or not, as well as
+#     a string with a human readable success / failure message.
+#     """
+#     # All YAML is valid JSON *except* if it contains hard tabs, and the default go
+#     # JSON outputter uses hard tabs, and since sops is written in go it does the same.
+#     # So we can't just use a YAML loader here - we use a yaml one if it ends in
+#     # .yaml, but json otherwise
+#     if filename.endswith('.yaml'):
+#         loader_func = yaml.load
+#     else:
+#         loader_func = json.load
+#     # sops doesn't have a --verify (https://github.com/mozilla/sops/issues/437)
+#     # so we implement some heuristics, primarily to guard against unencrypted
+#     # files being checked in.
+#     with open(filename) as f:
+#         try:
+#             doc = loader_func(f)
+#         except ParserError:
+#             # All sops encrypted files are valid JSON or YAML
+#             return False, f"{filename}: Not valid JSON or YAML, is not properly encrypted"
+
+
+#     invalid_keys = []
+#     for k in doc:
+#         if k != 'sops':
+#             # Values under the `sops` key are not encrypted.
+#             if not validate_enc(doc[k]):
+#                 # Collect all invalid keys so we can provide useful error message
+#                 invalid_keys.append(k)
+
+#     if invalid_keys:
+#         return False, f"{filename}: Unencrypted values found nested under keys: {','.join(invalid_keys)}"
+
+#     return True, f"{filename}: Valid encryption"
 
 def main():
     argparser = ArgumentParser()
