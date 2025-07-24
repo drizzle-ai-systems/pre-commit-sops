@@ -7,150 +7,96 @@ import json
 from ruamel.yaml import YAML
 from ruamel.yaml.parser import ParserError
 import sys
+import re
 
 yaml = YAML(typ='safe')
 
-
-def validate_enc(item):
+def is_encrypted_value(data):
     """
-    Validate given item is encrypted.
-
-    All leaf values in a sops encrypted file must be strings that
-    start with ENC[. We iterate through lists and dicts, checking
-    only for leaf strings. Presence of any other data type (like
-    bool, number, etc) also makes the file invalid except an empty
-    string which would pass the encryption check.
+    Recursively checks if a data structure is fully encrypted.
+    All leaf strings must start with 'ENC['.
     """
-    
-    if isinstance(item, str):
-        if item == "" or item.startswith('ENC['):
-            return True
-    elif isinstance(item, list):
-        return all(validate_enc(i) for i in item)
-    elif isinstance(item, dict):
-        return all(validate_enc(i) for i in item.values())
-    else:
-        return False
-    
+    if isinstance(data, dict):
+        return all(is_encrypted_value(v) for v in data.values())
+    if isinstance(data, list):
+        return all(is_encrypted_value(i) for i in data)
+    if isinstance(data, str):
+        return data.startswith('ENC[')
+    # Allow other types like bools, numbers to pass.
+    return True
 
-
+def find_unencrypted_keys(data, pattern_re):
+    """
+    Finds top-level keys in the data that match the pattern
+    but have unencrypted values.
+    """
+    unencrypted_keys = []
+    for key, value in data.items():
+        if key == 'sops':
+            continue
+        # Check if the top-level key matches the regex pattern
+        if pattern_re.search(key):
+            # If the key matches, its entire value structure must be encrypted
+            if not is_encrypted_value(value):
+                unencrypted_keys.append(key)
+    return unencrypted_keys
 
 def check_file(filename, pattern=None):
     """
-    Check if a file has been encrypted properly with sops.
-
-    Returns a boolean indicating wether given file is valid or not, as well as
-    a string with a human readable success / failure message.
-    
-    Args:
-        filename: Path to the file to check
-        pattern: Optional pattern to match keys that should be encrypted (e.g., "_secrets")
+    Check if a file has been encrypted properly with sops,
+    optionally checking only keys that match a regex pattern.
     """
-    # All YAML is valid JSON *except* if it contains hard tabs, and the default go
-    # JSON outputter uses hard tabs, and since sops is written in go it does the same.
-    # So we can't just use a YAML loader here - we use a yaml one if it ends in
-    # .yaml, but json otherwise
-    if filename.endswith('.yaml'):
-        loader_func = yaml.load
-    else:
-        loader_func = json.load
-    # sops doesn't have a --verify (https://github.com/mozilla/sops/issues/437)
-    # so we implement some heuristics, primarily to guard against unencrypted
-    # files being checked in.
-    with open(filename) as f:
-        try:
-            doc = loader_func(f)
-        except ParserError:
-            # All sops encrypted files are valid JSON or YAML
-            return False, f"{filename}: Not valid JSON or YAML, is not properly encrypted"
+    try:
+        with open(filename, 'r') as f:
+            if filename.endswith(('.yaml', '.yml')):
+                doc = yaml.load(f)
+            else:
+                doc = json.load(f)
+    except (ParserError, json.JSONDecodeError, FileNotFoundError) as e:
+        return False, f"{filename}: Error reading or parsing file: {e}"
 
     if 'sops' not in doc:
-        # sops puts a `sops` key in the encrypted output. If it is not
-        # present, very likely the file is not encrypted.
-        return False, f"{filename}: sops metadata key not found in file, is not properly encrypted"
+        return False, f"{filename}: sops metadata key not found. The file is not encrypted."
 
-    invalid_keys = []
-    for k in doc:
-        if k != 'sops':
-            # If pattern is specified, only check keys that match the pattern
-            should_check = pattern is None or k.endswith(pattern)
-            
-            if should_check and not validate_enc(doc[k]):
-                # Collect all invalid keys so we can provide useful error message
-                invalid_keys.append(k)
+    # If no pattern is provided, perform a simple check on the whole file.
+    if not pattern:
+        doc.pop('sops')
+        if not is_encrypted_value(doc):
+             return False, f"{filename}: Unencrypted values found in file."
+        return True, f"{filename}: Valid encryption."
 
-    if invalid_keys:
-        pattern_msg = f" (keys matching pattern '{pattern}')" if pattern else ""
-        return False, f"{filename}: Unencrypted values found nested under keys{pattern_msg}: {','.join(invalid_keys)}"
+    # If a pattern is provided, compile it and check only matching keys.
+    try:
+        pattern_re = re.compile(pattern)
+    except re.error as e:
+        return False, f"Invalid regex pattern '{pattern}': {e}"
 
-    return True, f"{filename}: Valid encryption"
+    unencrypted = find_unencrypted_keys(doc, pattern_re)
 
+    if unencrypted:
+        msg = f"{filename}: Unencrypted values found for keys matching pattern '{pattern}': {', '.join(unencrypted)}"
+        return False, msg
 
-    # if 'sops' not in doc:
-    # # sops puts a `sops` key in the encrypted output. If it is not
-    # # present, very likely the file is not encrypted.
-    #   return False, f"{filename}: sops metadata key not found in file, is not properly encrypted"
-
-
-
-# def check_file(filename):
-#     """
-#     Check if a file has been encrypted properly with sops.
-
-#     Returns a boolean indicating wether given file is valid or not, as well as
-#     a string with a human readable success / failure message.
-#     """
-#     # All YAML is valid JSON *except* if it contains hard tabs, and the default go
-#     # JSON outputter uses hard tabs, and since sops is written in go it does the same.
-#     # So we can't just use a YAML loader here - we use a yaml one if it ends in
-#     # .yaml, but json otherwise
-#     if filename.endswith('.yaml'):
-#         loader_func = yaml.load
-#     else:
-#         loader_func = json.load
-#     # sops doesn't have a --verify (https://github.com/mozilla/sops/issues/437)
-#     # so we implement some heuristics, primarily to guard against unencrypted
-#     # files being checked in.
-#     with open(filename) as f:
-#         try:
-#             doc = loader_func(f)
-#         except ParserError:
-#             # All sops encrypted files are valid JSON or YAML
-#             return False, f"{filename}: Not valid JSON or YAML, is not properly encrypted"
-
-
-#     invalid_keys = []
-#     for k in doc:
-#         if k != 'sops':
-#             # Values under the `sops` key are not encrypted.
-#             if not validate_enc(doc[k]):
-#                 # Collect all invalid keys so we can provide useful error message
-#                 invalid_keys.append(k)
-
-#     if invalid_keys:
-#         return False, f"{filename}: Unencrypted values found nested under keys: {','.join(invalid_keys)}"
-
-#     return True, f"{filename}: Valid encryption"
+    return True, f"{filename}: Valid encryption for keys matching pattern '{pattern}'."
 
 def main():
-    argparser = ArgumentParser()
-    argparser.add_argument('filenames', nargs='+')
-
+    # 'pre-commit' passes the filenames as positional arguments.
+    # We add our own optional '--pattern' argument.
+    argparser = ArgumentParser(
+        description="Check for sops encryption, optionally against a key pattern."
+    )
+    argparser.add_argument('filenames', nargs='+', help="Files to check")
+    argparser.add_argument('--pattern', help='Regex pattern to match keys that should be encrypted')
     args = argparser.parse_args()
 
-    failed_messages = []
-
-    for f in args.filenames:
-        is_valid, message = check_file(f)
-
+    exit_code = 0
+    for filename in args.filenames:
+        is_valid, message = check_file(filename, pattern=args.pattern)
+        print(message)
         if not is_valid:
-            failed_messages.append(message)
+            exit_code = 1
 
-    if failed_messages:
-        print('\n'.join(failed_messages))
-        return 1
-
-    return 0
+    return exit_code
 
 if __name__ == '__main__':
     sys.exit(main())
