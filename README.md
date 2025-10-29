@@ -4,7 +4,7 @@ Pre-commit hook to ensure that secret files are encrypted with SOPS.
 
 ## Repository
 
-https://github.com/DrizzleAI/pre-commit-sops
+https://github.com/drizzle-ai-systems/pre-commit-sops
 
 ## Author
 
