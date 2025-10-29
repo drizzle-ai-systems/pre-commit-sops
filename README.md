@@ -8,7 +8,7 @@ https://github.com/drizzle-ai-systems/pre-commit-sops
 
 ## Author
 
-Aymen Segni, Drizzle:AI Team  
+Aymen Segni, Drizzle AI Systems Team  
 contact@drizzle.systems
 
 ## Installation
@@ -17,7 +17,7 @@ Add this to your `.pre-commit-config.yaml`:
 
 ```yaml
 repos:
-- repo: https://github.com/DrizzleAI/pre-commit-sops
+- repo: https://github.com/drizzle-ai-systems/pre-commit-sops
   rev: v1.3
   hooks:
   - id: sops-encryption
@@ -34,7 +34,7 @@ This hook will check that files matching your pattern are encrypted with SOPS be
 
 ## Installation
 
-You can checke manually if your selected file(s) are encrypted by running the following commands:
+You can check manually if your selected file(s) are encrypted by running the following commands:
 
 1. Install the pre-commit
 ```bash
@@ -48,7 +48,7 @@ Execute this command to run pre-commit on all files in the repository (not only 
 pre-commit run -a 
 ```
 
-3. Example of teh output:
+3. Example of the output:
 
 ```bash
 [INFO] Initializing environment for https://github.com/DrizzleAI/pre-commit-sops.
